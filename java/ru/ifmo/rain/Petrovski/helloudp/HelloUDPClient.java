@@ -1,11 +1,13 @@
 package ru.ifmo.rain.Petrovski.helloudp;
 
-import java.io.IOException;
 import java.net.*;
-import java.nio.charset.Charset;
-import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
 import info.kgeorgiy.java.advanced.hello.HelloClient;
@@ -14,8 +16,20 @@ import static ru.ifmo.rain.Petrovski.helloudp.HelloUDPUtility.*;
 
 public class HelloUDPClient implements HelloClient{
 
-    private List<Thread> threads;
     private InetAddress host;
+    private ExecutorService worker;
+
+    private boolean checkReceivedMessage(String request, String response) {
+        if (!response.contains(request) || request.equals(response)) {
+            return false;
+        }
+        if (response.endsWith(request)) {
+            return true;
+        }
+        Pattern pattern = Pattern.compile(request + "\\s");
+        Matcher matcher = pattern.matcher(response);
+        return matcher.find();
+    }
 
     public void run(String hostName, int port, String prefix, int threadsCount, int queries) {
         try {
@@ -26,39 +40,40 @@ public class HelloUDPClient implements HelloClient{
         }
 
         Function<Integer, Runnable> generateWorker = (final Integer n) ->
-            () -> {
-                try {
-                    DatagramSocket socket = new DatagramSocket();
-                    DatagramPacket packet = createReceiveDatagram(socket);
-                    socket.setSoTimeout(100);
-                    for (int i = 0; i < queries; ++i) {
-                        try {
-                            String request = prefix + n + "_" + i;
-                            send(socket, this.host, port, request);
-                            socket.receive(packet);
-                            String received = new String(packet.getData(), packet.getOffset(), packet.getLength(), Charset.forName("UTF-8"));
-                            if (received.contains(request)) {
-                                System.out.println(received);
-                            } else {
+                () -> {
+                    try {
+                        DatagramSocket socket = new DatagramSocket();
+                        DatagramPacket packet = createReceiveDatagram(socket);
+                        socket.setSoTimeout(100);
+                        for (int i = 0; i < queries; ++i) {
+                            try {
+                                String request = prefix + n + "_" + i;
+                                System.out.println("me req = " + request);
+                                send(socket, this.host, port, request);
+                                socket.receive(packet);
+                                String received = new String(packet.getData(), packet.getOffset(), packet.getLength(), StandardCharsets.UTF_8);
+                                System.out.println("got = " + received);
+                                if (checkReceivedMessage(request, received)) {
+                                    System.out.println(received);
+                                } else {
+                                    --i;
+                                }
+                            } catch (Exception e) {
                                 --i;
                             }
-                        } catch (Exception e) {
-                            --i;
                         }
+                    } catch (SocketException e) {
+                        e.printStackTrace();
                     }
-                } catch (SocketException e) {
-                    e.printStackTrace();
-                }
-            };
+                };
 
-        threads = IntStream.range(0, threadsCount).mapToObj((int i) -> new Thread(generateWorker.apply(i))).collect(Collectors.toList());
-        threads.forEach(Thread::start);
-        threads.forEach(t -> {
-            try {
-                t.join();
-            } catch (InterruptedException e) {
-            }
-        });
+        worker = Executors.newFixedThreadPool(threadsCount);
+        IntStream.range(0, threadsCount).forEach(i -> worker.submit(generateWorker.apply(i)));
+        worker.shutdown();
+        try {
+            worker.awaitTermination(threadsCount * queries, TimeUnit.SECONDS);
+        } catch (InterruptedException ignored) {
+        }
     }
 
     public static void main(String[] args) {

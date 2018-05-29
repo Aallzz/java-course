@@ -3,9 +3,12 @@ package ru.ifmo.rain.Petrovski.helloudp;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.SocketException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -15,38 +18,55 @@ import static ru.ifmo.rain.Petrovski.helloudp.HelloUDPUtility.*;
 public class HelloUDPServer implements HelloServer {
 
     private DatagramSocket socket;
-    private List<Thread> threads;
+    private ExecutorService accepter;
+    private ExecutorService executor;
 
     public void start(int port, int threadsCount) {
         try {
             socket = new DatagramSocket(port);
-        } catch (Exception e) {
+        } catch (SocketException e) {
             System.out.println("Problem with socket opening: " + e.getMessage());
             return;
         }
 
-        Runnable worker = () -> {
+        BlockingQueue<Runnable> queue = new ArrayBlockingQueue<>(155555);
+        accepter = Executors.newSingleThreadExecutor();
+        executor = new ThreadPoolExecutor(threadsCount, threadsCount, 5, TimeUnit.SECONDS, queue, new ThreadPoolExecutor.DiscardPolicy());
+
+        Function<DatagramPacket, Runnable> generate_executor_worker = (final DatagramPacket packet) ->
+                () -> {
+                    try {
+                        send(socket, packet.getAddress(), packet.getPort(),
+                                "Hello, " + new String(packet.getData(), packet.getOffset(), packet.getLength(), StandardCharsets.UTF_8)
+                        );
+                    } catch (IOException e) {
+                    }
+                };
+
+        Runnable accepter_worker = () -> {
             try {
-                byte[] buf = new byte[socket.getReceiveBufferSize()];
-                DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                while (!socket.isClosed()) {
+                while (!socket.isClosed() && !Thread.currentThread().isInterrupted()) {
+                    byte[] buf = new byte[socket.getReceiveBufferSize()];
+                    DatagramPacket packet = new DatagramPacket(buf, buf.length);
                     socket.receive(packet);
-                    send(socket, packet.getAddress(), packet.getPort(),
-                            "Hello, " + new String(packet.getData(), packet.getOffset(), packet.getLength(), StandardCharsets.UTF_8)
-                    );
+                    executor.submit(generate_executor_worker.apply(packet));
                 }
             } catch (IOException e) {
                 e.printStackTrace();
             }
         };
 
-        threads = Stream.generate(() -> new Thread(worker))
-                .limit(threadsCount)
-                .collect(Collectors.toList());
-        threads.forEach(Thread::start);
+        accepter.submit(accepter_worker);
     }
 
     public void close() {
+        accepter.shutdownNow();
+        executor.shutdownNow();
+        try {
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+        } catch (InterruptedException ignored) {
+        }
+
         if (socket != null) {
             socket.close();
         }
