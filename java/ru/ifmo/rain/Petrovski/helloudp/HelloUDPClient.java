@@ -6,6 +6,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
@@ -39,36 +40,33 @@ public class HelloUDPClient implements HelloClient{
             return ;
         }
 
-        Function<Integer, Runnable> generateWorker = (final Integer n) ->
-                () -> {
+        IntFunction<Runnable> generateWorker = n -> () -> {
+            try {
+                DatagramSocket socket = new DatagramSocket();
+                DatagramPacket packet = createReceiveDatagram(socket);
+                socket.setSoTimeout(100);
+                for (int i = 0; i < queries; ++i) {
                     try {
-                        DatagramSocket socket = new DatagramSocket();
-                        DatagramPacket packet = createReceiveDatagram(socket);
-                        socket.setSoTimeout(100);
-                        for (int i = 0; i < queries; ++i) {
-                            try {
-                                String request = prefix + n + "_" + i;
-                                System.out.println("me req = " + request);
-                                send(socket, this.host, port, request);
-                                socket.receive(packet);
-                                String received = new String(packet.getData(), packet.getOffset(), packet.getLength(), StandardCharsets.UTF_8);
-                                System.out.println("got = " + received);
-                                if (checkReceivedMessage(request, received)) {
-                                    System.out.println(received);
-                                } else {
-                                    --i;
-                                }
-                            } catch (Exception e) {
-                                --i;
-                            }
+                        String request = prefix + n + "_" + i;
+                        send(socket, this.host, port, request);
+                        socket.receive(packet);
+                        String received = new String(packet.getData(), packet.getOffset(), packet.getLength(), StandardCharsets.UTF_8);
+                        if (checkReceivedMessage(request, received)) {
+                            System.out.println(received);
+                        } else {
+                            --i;
                         }
-                    } catch (SocketException e) {
-                        e.printStackTrace();
+                    } catch (Exception e) {
+                        --i;
                     }
-                };
+                }
+            } catch (SocketException e) {
+                e.printStackTrace();
+            }
+        };
 
         worker = Executors.newFixedThreadPool(threadsCount);
-        IntStream.range(0, threadsCount).forEach(i -> worker.submit(generateWorker.apply(i)));
+        IntStream.range(0, threadsCount).mapToObj(generateWorker).forEach(worker::submit);
         worker.shutdown();
         try {
             worker.awaitTermination(threadsCount * queries, TimeUnit.SECONDS);
@@ -80,21 +78,14 @@ public class HelloUDPClient implements HelloClient{
         if (args == null || args.length != 5) {
             System.out.println("Usage: java HelloUDPServer <Server name or ip> <port> <prefix query> " +
                     "<number of parallel queries> <number of queries in thread>");
-            return;
-        }
-        if (!isNumber(args[1])) {
+        } else if (!isNumber(args[1])) {
             System.out.println("Expected integer number for the port");
-            return;
-        }
-        if (!isNumber(args[3])) {
+        } else if (!isNumber(args[3])) {
             System.out.println("Expected integer number for the number of parallel queries");
-            return ;
-        }
-        if (!isNumber(args[4])) {
+        } else if (!isNumber(args[4])) {
             System.out.println("Expected integer number for the number of queries in thread");
-            return ;
+        } else {
+            new HelloUDPClient().run(args[0], Integer.parseInt(args[1]), args[2], Integer.parseInt(args[3]), Integer.parseInt(args[4]));
         }
-        new HelloUDPClient().run(args[0], Integer.parseInt(args[1]), args[2], Integer.parseInt(args[3]), Integer.parseInt(args[4]));
-
     }
 }

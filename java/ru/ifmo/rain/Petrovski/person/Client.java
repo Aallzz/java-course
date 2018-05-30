@@ -47,10 +47,10 @@ public class Client {
 
     public int run(String name, String surname, String passportId, String subId, int delta, int type) throws RemoteException, MalformedURLException, NotBoundException {
         bank.updateUserBaseWith(name, surname, passportId);
+
         Person user = type == 0
                 ? bank.getLocalUserByPassport(passportId)
                 : bank.getRemoteUserByPassport(passportId);
-
 
         Account account = bank.getAccount(user, subId);
         if (account == null) {

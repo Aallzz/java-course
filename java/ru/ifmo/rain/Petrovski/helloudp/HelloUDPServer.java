@@ -33,23 +33,20 @@ public class HelloUDPServer implements HelloServer {
         accepter = Executors.newSingleThreadExecutor();
         executor = new ThreadPoolExecutor(threadsCount, threadsCount, 5, TimeUnit.SECONDS, queue, new ThreadPoolExecutor.DiscardPolicy());
 
-        Function<DatagramPacket, Runnable> generate_executor_worker = (final DatagramPacket packet) ->
-                () -> {
-                    try {
-                        send(socket, packet.getAddress(), packet.getPort(),
-                                "Hello, " + new String(packet.getData(), packet.getOffset(), packet.getLength(), StandardCharsets.UTF_8)
-                        );
-                    } catch (IOException e) {
-                    }
-                };
-
         Runnable accepter_worker = () -> {
             try {
                 while (!socket.isClosed() && !Thread.currentThread().isInterrupted()) {
                     byte[] buf = new byte[socket.getReceiveBufferSize()];
-                    DatagramPacket packet = new DatagramPacket(buf, buf.length);
+                    final DatagramPacket packet = new DatagramPacket(buf, buf.length);
                     socket.receive(packet);
-                    executor.submit(generate_executor_worker.apply(packet));
+                    executor.submit(() -> {
+                        try {
+                            send(socket, packet.getAddress(), packet.getPort(),
+                                    "Hello, " + new String(packet.getData(), packet.getOffset(), packet.getLength(), StandardCharsets.UTF_8)
+                            );
+                        } catch (IOException e) {
+                        }
+                    });
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -62,13 +59,12 @@ public class HelloUDPServer implements HelloServer {
     public void close() {
         accepter.shutdownNow();
         executor.shutdownNow();
+        if (socket != null) {
+            socket.close();
+        }
         try {
             executor.awaitTermination(5, TimeUnit.SECONDS);
         } catch (InterruptedException ignored) {
-        }
-
-        if (socket != null) {
-            socket.close();
         }
     }
 

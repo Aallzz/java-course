@@ -21,9 +21,9 @@ public class TronBankTest {
         Client client = new Client();
         Client client2 = new Client();
         assertEquals(1, client.run("1", "2", "3", "4", 1));
-        assertEquals(3, client2.run("1", "2", "3", "4", 2));
+        assertEquals(3, client2.run("1", "2", "3", "4", 2, 1));
         assertEquals(7, client.run("1", "2", "3", "4", 4));
-        assertEquals(15, client2.run("1", "2", "3", "4", 8));
+        assertEquals(15, client2.run("1", "2", "3", "4", 8, 1));
     }
 
 }
