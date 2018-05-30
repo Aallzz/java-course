@@ -1,4 +1,6 @@
+*.class
+out/
 .idea
 temp/
 __Test__Walk__/
-.class
+

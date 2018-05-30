@@ -1,40 +1,39 @@
 package ru.ifmo.rain.Petrovski.person;
 
+import java.io.Serializable;
 import java.rmi.Remote;
 import java.rmi.RemoteException;
 
-import java.rmi.RemoteException;
-import java.rmi.server.UnicastRemoteObject;
 
-public class RemotePerson extends UnicastRemoteObject implements Remote, Person {
+public class LocalPerson implements Person, Serializable {
     private final String name;
     private final String surname;
     private final String passportId;
 
-    public RemotePerson(String name, String surname, String passportId) throws RemoteException {
+    public LocalPerson(String name, String surname, String passportId) {
         this.name = name;
         this.surname = surname;
         this.passportId = passportId;
     }
 
     @Override
-    public String getSurname() throws RemoteException {
+    public String getSurname() {
         return surname;
     }
 
     @Override
-    public String getPassportId() throws RemoteException {
+    public String getPassportId() {
         return passportId;
     }
 
     @Override
-    public String getName() throws RemoteException {
+    public String getName() {
         return name;
     }
 
     @Override
     public boolean equals(Object obj) {
-        if (obj == null || !(obj instanceof RemoteException))
+        if (obj == null || !(obj instanceof LocalPerson))
             return false;
         return hashCode() == obj.hashCode() && toString().equals(obj.toString());
     }
